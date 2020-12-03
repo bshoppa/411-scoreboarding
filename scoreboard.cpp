@@ -1,6 +1,8 @@
 #include <iostream>
 #include <map>
 #include <utility>
+#include <string>
+#include <fstream>
 using namespace std;
 
 enum InstructionType {
@@ -48,6 +50,24 @@ public:
 	vector<Data> Memory = vector<Data>(Data(), 19);
 	vector<Data> Registers = vector<Data>(Data(), 32);
 	bool complete;
+
+	//once each line is parsed, goes into instruction vector
+	void load_instructions(string file){
+		fstream dataFile;
+		string buf;
+		AInput temp;
+
+		dataFile.open(file);
+
+		while(getline(dataFile, buf, '\n')){
+			temp.InstructionName = buf;
+			temp.reg1 = buf;
+			temp.reg2 = buf;
+			temp.reg3 = buf;
+
+			Instructions.psuh_back(temp);
+		}
+	}
 
 	void tryToExecute(){
 		AInput instruction = &iterator; // should already be given to you by reference
