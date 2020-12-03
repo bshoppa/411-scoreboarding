@@ -5,6 +5,8 @@
 #include <fstream>
 using namespace std;
 
+typedef clockCycle int;
+
 enum InstructionType {
 	MEM_INSTRUCTION,
 	ALU_INSTRUCTION
@@ -17,14 +19,28 @@ public:
 };
 
 class AInput {
+public:
 	string InstructionName;
 	string reg1;
 	string reg2;
 	string reg3;
 
 	InstructionType type;
-	int[4] clockCycleTimes = {0};
+	clockCycle[4] clockCycleTimes = {0};
 	bool hasExecuted;
+
+	clockCycle ReadDependency(AInput &in){
+		if(reg1 == in.reg1){
+
+		}
+	};
+
+	clockCycle Issue(AInput &in){
+		if(ReadDependency(in)){
+
+		}
+		return clockCycleTimes[2];
+	}
 };
 
 int max(int a, int b){
@@ -71,13 +87,13 @@ public:
 
 	void tryToExecute(){
 		AInput instruction = &iterator; // should already be given to you by reference
-		int start = 0;
+		clockCycle whenCanStartIssue = 1;
 		for(vector<AInput>::iterator it = iterator; it != Instructions.begin(); it--){
 			if(it.hasExecuted){
-				start = max(&it.clockCycleTimes[3], start);
+				clockCycle whenCanStartIssue = max(Issue, whenCanStartIssue);
 			}
 		}
-		instruction.clockCycleTimes[0] = start + 1;
+		instruction.clockCycleTimes[0] = whenCanStartIssue;
 		// first = issue
 		instruction.clockCycleTimes[1] = clockCycleTimes[0] + 1;
 		// second = read operand
@@ -118,5 +134,7 @@ int main(int argc, char* argv[]) {
 	} else {
 		myInput.status
 	}
+	// insert memory and instructions before executing
+	myInput.process();
 	return 0;
 }
