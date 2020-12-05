@@ -31,16 +31,51 @@ public:
 	string name;
 };
 
-class AInput {
+struct AInput {
 public:
-	string InstructionName;
-	string reg1;
-	string reg2;
-	string reg3;
+	AInput() {};
+	AInput(string t_InstructionName, string t_reg1 = "", string t_reg2 = "", string t_reg3 = "") : InstructionName(t_InstructionName), reg1(t_reg1), reg2(t_reg2), reg3(t_reg3){
+
+	};
+	AInput(const char* t_InstructionName, const char* t_reg1 = nullptr, const char* t_reg2 = nullptr, const char* t_reg3 = nullptr) : AInput((string) t_InstructionName, (string) t_reg1, (string) t_reg2, (string) t_reg3) {
+
+	}
+	AInput(const AInput &in){
+		InstructionName = in.InstructionName;
+		reg1 = in.reg1;
+		reg2 = in.reg2;
+		reg3 = in.reg3;
+		type = in.type;
+		for(int i = 0; i < 4; i++){
+			clockCycleTimes[i] = in.clockCycleTimes[i];
+		}
+		hasExecuted = in.hasExecuted;
+	};
+
+	AInput& operator=(const AInput &in){
+		InstructionName = in.InstructionName;
+		reg1 = in.reg1;
+		reg2 = in.reg2;
+		reg3 = in.reg3;
+		type = in.type;
+		for(int i = 0; i < 4; i++){
+			clockCycleTimes[i] = in.clockCycleTimes[i];
+		}
+		hasExecuted = in.hasExecuted;
+		return *this;
+	};
+
+	~AInput(){
+
+	};
+	string InstructionName = "";
+	string reg1 = "";
+	string reg2 = "";
+	string reg3 = "";
 
 	InstructionType type;
 	clockCycle clockCycleTimes[4] = {0};
-	bool hasExecuted;
+	bool hasExecuted = false;
 
 	clockCycle ReadDependency(AInput &in){
 		if(reg1 == in.reg1){
@@ -90,21 +125,29 @@ public:
 		fstream dataFile;
 		string buf;
 		AInput temp;
+		temp.hasExecuted = false;
 
 		dataFile.open(file);
 
 		while(getline(dataFile, buf, '\n')){
-			temp.InstructionName = buf;
-			temp.reg1 = buf;
-			temp.reg2 = buf;
-			temp.reg3 = buf;
 
+			temp.InstructionName = buf.substr(0, buf.find_first_of(' '));
+			string reg1_and_buf = buf.substr(buf.find_first_of(' ') + 1, string::npos);
+			temp.reg1 = reg1_and_buf.substr(0, reg1_and_buf.find_first_of(' '));
+			string reg2_and_buf = reg1_and_buf.substr(reg1_and_buf.find_first_of(' ') + 1, string::npos);
+			temp.reg2 = reg2_and_buf.substr(0, reg2_and_buf.find_first_of(' '));
+			string reg3_and_buf = reg2_and_buf.substr(reg2_and_buf.find_first_of(' ') + 1, string::npos);
+			temp.reg3 = reg3_and_buf.substr(0, reg3_and_buf.find_first_of(' '));
+
+			// cout << "Name: " << temp.InstructionName << endl;
+			// cout << "Register 1: " << temp.reg1 << endl;
+			// cout << "Register 2: " << temp.reg2 << endl;
+			// cout << "Register 3: " << temp.reg3 << endl;
 			Instructions.push_back(temp);
 		}
 	}
 
-	void tryToExecute(vector<AInput>::iterator iterator){
-		AInput instruction = *iterator; // should already be given to you by reference
+	void tryToExecute(AInput &instruction, vector<AInput>::iterator iterator){
 		clockCycle whenCanStartIssue = 1;
 		for(vector<AInput>::iterator it = iterator; it != Instructions.begin(); it--){
 			if(it->hasExecuted){
@@ -117,7 +160,15 @@ public:
 		// second = read operand
 		instruction.clockCycleTimes[2] = instruction.clockCycleTimes[1] + 1;
 		// the third is the execute
-		instruction.clockCycleTimes[3] = instruction.clockCycleTimes[2] + InstructionUseStatus.at(instruction.InstructionName)->clockCycles[2];
+		if(InstructionUseStatus.count(instruction.InstructionName) != (size_t) NULL){
+			Subprocessor* processor = InstructionUseStatus.at(instruction.InstructionName);
+			instruction.clockCycleTimes[3] = instruction.clockCycleTimes[2] + processor->clockCycles[2];
+		} else {
+			cout << "Not setting clockCycleTimes[3] until mapping is implemented" << endl;
+			instruction.clockCycleTimes[3] = instruction.clockCycleTimes[2] + 1;
+		}
+
+		//
 		instruction.hasExecuted = true;
 	}
 
@@ -128,7 +179,7 @@ public:
 		complete = false;
 		int currentClockCycle = 0;
 		while(!complete){
-			tryToExecute(CurrentInstruction);
+			tryToExecute(*CurrentInstruction, CurrentInstruction);
 			complete = CurrentInstruction == Instructions.end();
 			CurrentInstruction++;
 		}
@@ -182,15 +233,17 @@ int main(int argc, char* argv[]) {
 	};*/
 
 	if(argc <= 1){
-		myInput.Instructions.push_back(AInput {"L.D", "F2", "0($1)"});
-		myInput.Instructions.push_back(AInput {"MUL.D", "F4", "F2", "F0"});
-		myInput.Instructions.push_back(AInput {"L.D", "F6", "0($2)"});
-		myInput.Instructions.push_back(AInput {"ADD.D", "F6", "F4", "F2"});
-		myInput.Instructions.push_back(AInput {"S.D", "F6", "0", "F2"});
-		myInput.Instructions.push_back(AInput {"SUB.D", "F3", "F6", "F0"});
-		myInput.Instructions.push_back(AInput {"S.D", "F3", "0", "F3"});
+		myInput.Instructions.push_back(AInput ("L.D", "F2", "0($1)"));
+		myInput.Instructions.push_back(AInput ("MUL.D", "F4", "F2", "F0"));
+		myInput.Instructions.push_back(AInput ("L.D", "F6", "0($2)"));
+		myInput.Instructions.push_back(AInput ("ADD.D", "F6", "F4", "F2"));
+		myInput.Instructions.push_back(AInput ("S.D", "F6", "0", "F2"));
+		myInput.Instructions.push_back(AInput ("SUB.D", "F3", "F6", "F0"));
+		myInput.Instructions.push_back(AInput ("S.D", "F3", "0", "F3"));
 	} else {
 		//myInput.Instructions
+		cout << "File is " << string(argv[1]) << endl;
+		myInput.load_instructions(string(argv[1]));
 	}
 	// insert memory and instructions before executing
 	myInput.process();
