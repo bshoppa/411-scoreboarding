@@ -1,3 +1,8 @@
+/*
+  assignment 4 instructions
+  we used this because we already knew the answer from the homework
+*/
+
 L.D F2, 0(1)
 MUL.D F4, F2, F0
 L.D F6, 0(2)
