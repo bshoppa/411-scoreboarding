@@ -1,3 +1,8 @@
+// Bailey Shoppa & Matthew Davis
+// 411 Scoreboarding
+
+
+
 #include <iostream>
 #include <map>
 #include <utility>
@@ -8,12 +13,9 @@
 #include <exception>
 using namespace std;
 
+// clockCycles are used as the time values (in terms of clock cycles) in the scoreboard.
+// an array of 4 clockCycles represents values associated with Issue, Read, Execute, and Writeback
 typedef int clockCycle;
-
-enum InstructionType {
-	MEM_INSTRUCTION,
-	ALU_INSTRUCTION
-};
 
 enum datatype {
 	INT,
@@ -21,10 +23,16 @@ enum datatype {
 };
 
 class Scoreboard;
+
+// attached to instructions - can consist of an operation like "add", "subtract", etc.
+// accesses the data members of the input scoreboard
 struct CPUOperation {
 	void (*operation) (Scoreboard&, string, string, string) ;
 };
 
+// determines specifications of a part of the CPU - e.g. the INTEGER UNIT, a certain floating point unit such as the divider, etc.
+// also determines how long it takes to issue, read oper, execute, and writeback
+// (however, issue, read oper, and writeback don't technically occupy a particular subprocessor)
 class Subprocessor {
 public:
 	Subprocessor(const clockCycle t_clockCycles[4], int t_units) {
@@ -38,8 +46,25 @@ public:
 	string name;
 };
 
+// contains the text values of each input MIPS-like line, as well as scoreboarding data and scoreboarding functions
+// examples of how a string is parsed and placed into an Instruction.
+// of course, the Instruction is 4 strings
+// INSTRUCTION reg1, reg2, reg3
+// -> .InstructionName, .reg1, .reg2, .reg3
+// INSTRUCTION reg1, offset (address)
+// -> .InstructionName, .reg1, .reg2 ... .reg3 = ""
+// INSTRUCTION reg1, reg2, IMMEDIATE
+// -> .InstructionName, .reg1, .reg2, .reg3
 struct Instruction {
 public:
+	string InstructionName = "";
+	string reg1 = "";
+	string reg2 = "";
+	string reg3 = "";
+
+	clockCycle clockCycleTimes[4] = {0};
+	bool hasExecuted = false;
+
 	Instruction() {
 		for(int i = 0; i < 4; i++){
 			clockCycleTimes[i] = 0;
@@ -58,7 +83,6 @@ public:
 		reg1 = in.reg1;
 		reg2 = in.reg2;
 		reg3 = in.reg3;
-		type = in.type;
 		for(int i = 0; i < 4; i++){
 			clockCycleTimes[i] = in.clockCycleTimes[i];
 		}
@@ -70,7 +94,6 @@ public:
 		reg1 = in.reg1;
 		reg2 = in.reg2;
 		reg3 = in.reg3;
-		type = in.type;
 		for(int i = 0; i < 4; i++){
 			clockCycleTimes[i] = in.clockCycleTimes[i];
 		}
@@ -81,18 +104,22 @@ public:
 	~Instruction(){
 
 	};
-	string InstructionName = "";
-	string reg1 = "";
-	string reg2 = "";
-	string reg3 = "";
 
-	InstructionType type;
-	clockCycle clockCycleTimes[4] = {0};
-	bool hasExecuted = false;
 
-	clockCycle ReadDependency(Instruction &in){
-		if(reg1 == in.reg1){
+	clockCycle IssueDependency(Instruction &in){
+		if(in.reg1 == reg1){
+			return clockCycleTimes[3];
+		}
+		return clockCycleTimes[0] + 1; // don't allow anything to issue at the same time
+		// and ... force future instructions to execute in the future.
+	};
 
+	clockCycle ReadOperDependency(Instruction &in){
+		if(reg1 == in.reg2){
+			return clockCycleTimes[3];
+		}
+		if(reg1 == in.reg3){
+			return clockCycleTimes[3];
 		}
 		return 0;
 	};
@@ -101,12 +128,6 @@ public:
 		return clockCycleTimes[3];
 	};
 
-	clockCycle Issue(Instruction &in){
-		if(ReadDependency(in)){
-
-		}
-		return clockCycleTimes[1];
-	}
 };
 
 int max(int a, int b){
@@ -116,6 +137,9 @@ int max(int a, int b){
 	return b;
 }
 
+// Data is for a Register or Memory object to hold its integer / float value.
+// After reading the project write up, I would decide that Memory can only hold floating point number, FRegisters can only hold floating point numbers, and IRegisters can only hold integers.
+// This is not "hardcoded", it is just that there are no functions you can call to make Memory store a floating point number.
 class Data {
 public:
 	Data() {
@@ -136,18 +160,17 @@ public:
 	enum datatype datatype;
 };
 
+// parse each line of input
 void find_next(const string buf, string &out){
 	size_t next_comma = buf.find_first_of(',');
-	size_t next_space = buf.find_first_of(' ') + 1;
 
-	out = buf.substr(next_space, next_comma - next_space);
+	out = buf.substr(0, next_comma);
 };
 
 void find_next(const string buf, string &out, string &nextbuf){
 	size_t next_comma = buf.find_first_of(',');
-	size_t next_space = buf.find_first_of(' ') + 1;
 
-	out = buf.substr(next_space, next_comma - next_space);
+	out = buf.substr(0, next_comma);
 	if(next_comma == string::npos){
 
 	} else {
@@ -155,10 +178,17 @@ void find_next(const string buf, string &out, string &nextbuf){
 	}
 };
 
+// simulate the CPU and memory
+// constructor:
+// build the simulation so that it can interpret a set of commands and associate them with a specific (simulated) CPU component
+
+// process:
+// "advance" the state of the Scoreboard to the end, determine the right clock cycles, and update Memory, FRegisters, and IRegisters
 class Scoreboard {
 public:
 	class Executer {
 		// knows what part of the CPU the instruction uses to execute, and knows what function to call to modify the data
+		// basically i just got sick of using the pair<> constructor
 	public:
 		Subprocessor* part_of_cpu;
 		CPUOperation operation;
@@ -166,7 +196,7 @@ public:
 	map<string, Executer> InstructionUseStatus;
 	vector<Subprocessor> Processor;
 	vector<Instruction> Instructions;
-	vector<Data> Memory = vector<Data>(19, Data(0));
+	vector<Data> Memory = vector<Data>(19, Data((float) 0));
 	vector<Data> FRegisters = vector<Data>(32, Data((float) 0.));
 	vector<Data> IRegisters = vector<Data>(32, Data((int) 0));
 	bool complete;
@@ -205,7 +235,7 @@ public:
 		while(getline(dataFile, buf, '\n')){
 
 			temp.InstructionName = buf.substr(0, buf.find_first_of(' '));
-			string reg1_and_buf; find_next(buf, temp.reg1, reg1_and_buf);
+			string reg1_and_buf; find_next(buf.substr(buf.find_first_of(' ') + 1, string::npos), temp.reg1, reg1_and_buf);
 			string reg2_and_buf; find_next(reg1_and_buf, temp.reg2, reg2_and_buf);
 			string reg3_and_buf; find_next(reg2_and_buf, temp.reg3);
 
@@ -221,21 +251,67 @@ public:
 
 	void tryToExecute(Instruction &instruction, vector<Instruction>::iterator iterator){
 		clockCycle whenCanStartIssue = 1;
-		clockCycle whenCanWriteBack = 1;
+		clockCycle whenCanWriteBack;
+		clockCycle whenCanStartReadOper;
+		// findIssue: // don't crucify me, i like goto's sometimes ...
+		bool hasEnoughUnits = false;
+		while(!hasEnoughUnits){
+			for(int index = distance(Instructions.begin(), iterator) - 1; index >= 0; index--){
+				// check all previous instructions
+				// (there is probably a method that doesn't require checking "all" previous instructions)
+				auto previousInstruction = Instructions[index];
+
+				if(previousInstruction.hasExecuted){
+					whenCanStartIssue = max(previousInstruction.IssueDependency(instruction), whenCanStartIssue);
+				}
+			}
+			int unitsUsedAtTime = 1; // this instruction will use a unit.
+			if(InstructionUseStatus.count(instruction.InstructionName) != (size_t) NULL){
+				Subprocessor* processor = InstructionUseStatus.at(instruction.InstructionName).part_of_cpu;
+				for(int index = distance(Instructions.begin(), iterator) - 1; index >= 0; index--){
+					auto previousInstruction = Instructions[index];
+					// if both instructions use the same subprocessor, they are using the same unit.
+					if(InstructionUseStatus.at(previousInstruction.InstructionName).part_of_cpu == processor){
+						// check if both are using the same unit at the same time.
+						if(previousInstruction.clockCycleTimes[0] <= whenCanStartIssue && previousInstruction.clockCycleTimes[3] >= whenCanStartIssue){
+							unitsUsedAtTime++;
+						}
+					}
+				}
+				if(processor->units < unitsUsedAtTime){
+					cout << "Not enough units for instruction " << instruction.InstructionName << endl;
+					whenCanStartIssue++;
+					hasEnoughUnits = false;
+				} else {
+					hasEnoughUnits = true;
+				}
+			} else {
+				cout << "Unable to find processor unit for instruction." << endl;
+			}
+		}
+
+
+		instruction.clockCycleTimes[0] = whenCanStartIssue;
+		// first = issue
+
+		whenCanWriteBack = whenCanStartIssue + 1;
+		whenCanStartReadOper = whenCanStartIssue + 1;
+		// FIND THE OPERATIONS THAT SET THIS ARGUMENT'S REGISTERS
 		for(int index = distance(Instructions.begin(), iterator) - 1; index >= 0; index--){
-			// check all previous instructions
 			auto previousInstruction = Instructions[index];
 
 			if(previousInstruction.hasExecuted){
-				whenCanStartIssue = max(previousInstruction.Issue(instruction), whenCanStartIssue);
+				whenCanStartReadOper = max(previousInstruction.ReadOperDependency(instruction) + 1, whenCanStartReadOper);
 			}
 		}
-		instruction.clockCycleTimes[0] = whenCanStartIssue;
-		// first = issue
-		instruction.clockCycleTimes[1] = instruction.clockCycleTimes[0] + 1;
+		instruction.clockCycleTimes[1] = whenCanStartReadOper;
 		// second = read operand
+
+		// try to find out information about the type of the instruction inside of the Scoreboard object.
 		if(InstructionUseStatus.count(instruction.InstructionName) != (size_t) NULL){
 			Subprocessor* processor = InstructionUseStatus.at(instruction.InstructionName).part_of_cpu;
+			// processor indicates how long an operation takes (clockCycles)
+			// and how many of operations of that type can happen simultaneously
 			instruction.clockCycleTimes[2] = instruction.clockCycleTimes[1] + processor->clockCycles[2];
 
 			Scoreboard thisScoreboard = *this;
@@ -245,18 +321,19 @@ public:
 			cout << "Not setting clockCycleTimes[2] until mapping is implemented" << endl;
 			instruction.clockCycleTimes[2] = instruction.clockCycleTimes[1] + 1;
 		}
-		// the third is the execute
+		// third = execute
 		whenCanWriteBack = instruction.clockCycleTimes[2] + 1;
 		bool changed = true;
 		while(changed){
 			changed = false;
 			for(int index = distance(Instructions.begin(), iterator) - 1; index >= 0; index--){
-				// check all previous instructions
+				// check all previous instructions so that writeback does not occur at the same time as another writeback
 				auto previousInstruction = Instructions[index];
 
 				if(previousInstruction.hasExecuted){
 					if(previousInstruction.WritebackDependency(instruction) == whenCanWriteBack){
 						changed = true;
+						// since we cannot go into the past to writeback... we shall go into the future.
 						whenCanWriteBack++;
 						break;
 					}
@@ -506,7 +583,6 @@ int main(int argc, char* argv[]) {
 		myInput.Instructions.push_back(Instruction ("S.D", "F3", "0", "F3"));
 	} else {
 		//myInput.Instructions
-		cout << "File is " << string(argv[1]) << endl;
 		myInput.load_instructions(string(argv[1]));
 	}
 	// insert memory and instructions before executing
