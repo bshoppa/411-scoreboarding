@@ -4,6 +4,7 @@
 #include <string>
 #include <fstream>
 #include <vector>
+#include <iterator>
 using namespace std;
 
 typedef int clockCycle;
@@ -16,6 +17,11 @@ enum InstructionType {
 enum datatype {
 	INT,
 	FLOAT
+};
+
+class Scoreboard;
+struct CPUOperation {
+	void (*operation) (Scoreboard&, string, string, string) ;
 };
 
 class Subprocessor {
@@ -33,9 +39,15 @@ public:
 
 struct AInput {
 public:
-	AInput() {};
+	AInput() {
+		for(int i = 0; i < 4; i++){
+			clockCycleTimes[i] = 0;
+		}
+	};
 	AInput(string t_InstructionName, string t_reg1 = "", string t_reg2 = "", string t_reg3 = "") : InstructionName(t_InstructionName), reg1(t_reg1), reg2(t_reg2), reg3(t_reg3){
-
+		for(int i = 0; i < 4; i++){
+			clockCycleTimes[i] = 0;
+		}
 	};
 	AInput(const char* t_InstructionName, const char* t_reg1 = nullptr, const char* t_reg2 = nullptr, const char* t_reg3 = nullptr) : AInput((string) t_InstructionName, (string) t_reg1, (string) t_reg2, (string) t_reg3) {
 
@@ -84,11 +96,15 @@ public:
 		return 0;
 	};
 
+	clockCycle WritebackDependency(AInput &in){
+		return clockCycleTimes[3];
+	};
+
 	clockCycle Issue(AInput &in){
 		if(ReadDependency(in)){
 
 		}
-		return clockCycleTimes[2];
+		return clockCycleTimes[1];
 	}
 };
 
@@ -107,17 +123,55 @@ class Data {
 	enum datatype datatype;
 };
 
+void find_next(const string buf, string &out){
+	size_t next_comma = buf.find_first_of(',');
+	size_t next_space = buf.find_first_of(' ') + 1;
+
+	out = buf.substr(next_space, next_comma - next_space);
+};
+
+void find_next(const string buf, string &out, string &nextbuf){
+	cout << buf << endl;
+	size_t next_comma = buf.find_first_of(',');
+	size_t next_space = buf.find_first_of(' ') + 1;
+
+	out = buf.substr(next_space, next_comma - next_space);
+	nextbuf = buf.substr(next_comma + 2, string::npos);
+	cout << "Next is " << nextbuf << endl;
+};
+
 class Scoreboard {
 public:
-	map<string, Subprocessor*> InstructionUseStatus;
+	class Executer {
+		// knows what part of the CPU the instruction uses to execute, and knows what function to call to modify the data
+	public:
+		Subprocessor* part_of_cpu;
+		CPUOperation operation;
+	};
+	map<string, Executer> InstructionUseStatus;
 	vector<Subprocessor> Processor;
 	vector<AInput> Instructions;
 	vector<Data> Memory = vector<Data>(19, Data());
 	vector<Data> Registers = vector<Data>(32, Data());
 	bool complete;
 
-	Scoreboard (vector<pair<string, Subprocessor>> subprocessors, vector<pair<string, pair<string, void (*) (Scoreboard&, string, string)>>> instruction_definitions) {
+	Scoreboard (vector<pair<string, Subprocessor>> subprocessors, vector<pair<string, pair<string, CPUOperation>>> instruction_definitions) {
+		string* arr = new string[subprocessors.size()];
+		for(vector<pair<string, Subprocessor>>::iterator it = subprocessors.begin(); it != subprocessors.end(); it++){
+			Processor.push_back(it->second);
+			arr[distance(subprocessors.begin(), it)] = it->first;
+		}
 
+		for(vector<pair<string, pair<string, CPUOperation>>>::iterator it = instruction_definitions.begin(); it != instruction_definitions.end(); it++){
+			for(size_t i = 0; i < Processor.size(); i++){
+				if(arr[i] == it->second.first){
+					InstructionUseStatus[it->first] = Executer {&Processor[i], it->second.second};
+					break;
+				}
+			}
+		}
+
+		delete[] arr;
 	};
 
 	//once each line is parsed, goes into instruction vector
@@ -132,77 +186,91 @@ public:
 		while(getline(dataFile, buf, '\n')){
 
 			temp.InstructionName = buf.substr(0, buf.find_first_of(' '));
-			string reg1_and_buf = buf.substr(buf.find_first_of(' ') + 1, string::npos);
-			temp.reg1 = reg1_and_buf.substr(0, reg1_and_buf.find_first_of(' '));
-			string reg2_and_buf = reg1_and_buf.substr(reg1_and_buf.find_first_of(' ') + 1, string::npos);
-			temp.reg2 = reg2_and_buf.substr(0, reg2_and_buf.find_first_of(' '));
-			string reg3_and_buf = reg2_and_buf.substr(reg2_and_buf.find_first_of(' ') + 1, string::npos);
-			temp.reg3 = reg3_and_buf.substr(0, reg3_and_buf.find_first_of(' '));
+			string reg1_and_buf; find_next(buf, temp.reg1, reg1_and_buf);
+			string reg2_and_buf; find_next(reg1_and_buf, temp.reg2, reg2_and_buf);
+			string reg3_and_buf; find_next(reg2_and_buf, temp.reg3);
 
-			// cout << "Name: " << temp.InstructionName << endl;
-			// cout << "Register 1: " << temp.reg1 << endl;
-			// cout << "Register 2: " << temp.reg2 << endl;
-			// cout << "Register 3: " << temp.reg3 << endl;
+			printf("Name \"%s\" reg1 \"%s\" reg2 \"%s\" reg3 \"%s\"\n", temp.InstructionName.c_str(), temp.reg1.c_str(), temp.reg2.c_str(), temp.reg3.c_str());
+
 			Instructions.push_back(temp);
 		}
 	}
 
 	void tryToExecute(AInput &instruction, vector<AInput>::iterator iterator){
 		clockCycle whenCanStartIssue = 1;
-		for(vector<AInput>::iterator it = iterator; it != Instructions.begin(); it--){
-			if(it->hasExecuted){
-				clockCycle whenCanStartIssue = max(it->Issue(instruction), whenCanStartIssue);
+		clockCycle whenCanWriteBack = 1;
+		for(int index = distance(Instructions.begin(), iterator) - 1; index >= 0; index--){
+			// check all previous instructions
+			auto previousInstruction = Instructions[index];
+
+			if(previousInstruction.hasExecuted){
+				whenCanStartIssue = max(previousInstruction.Issue(instruction), whenCanStartIssue);
 			}
 		}
 		instruction.clockCycleTimes[0] = whenCanStartIssue;
 		// first = issue
 		instruction.clockCycleTimes[1] = instruction.clockCycleTimes[0] + 1;
 		// second = read operand
-		instruction.clockCycleTimes[2] = instruction.clockCycleTimes[1] + 1;
-		// the third is the execute
 		if(InstructionUseStatus.count(instruction.InstructionName) != (size_t) NULL){
-			Subprocessor* processor = InstructionUseStatus.at(instruction.InstructionName);
-			instruction.clockCycleTimes[3] = instruction.clockCycleTimes[2] + processor->clockCycles[2];
+			Subprocessor* processor = InstructionUseStatus.at(instruction.InstructionName).part_of_cpu;
+			instruction.clockCycleTimes[2] = instruction.clockCycleTimes[1] + processor->clockCycles[2];
 		} else {
-			cout << "Not setting clockCycleTimes[3] until mapping is implemented" << endl;
-			instruction.clockCycleTimes[3] = instruction.clockCycleTimes[2] + 1;
+			cout << "Not setting clockCycleTimes[2] until mapping is implemented" << endl;
+			instruction.clockCycleTimes[2] = instruction.clockCycleTimes[1] + 1;
+		}
+		// the third is the execute
+		whenCanWriteBack = instruction.clockCycleTimes[2] + 1;
+		bool changed = true;
+		while(changed){
+			changed = false;
+			for(int index = distance(Instructions.begin(), iterator) - 1; index >= 0; index--){
+				// check all previous instructions
+				auto previousInstruction = Instructions[index];
+
+				if(previousInstruction.hasExecuted){
+					if(previousInstruction.WritebackDependency(instruction) == whenCanWriteBack){
+						changed = true;
+						whenCanWriteBack++;
+						break;
+					}
+				}
+			}
 		}
 
+		instruction.clockCycleTimes[3] = whenCanWriteBack;
 		//
 		instruction.hasExecuted = true;
 	}
 
 	void process() {
-		vector<AInput>::iterator CurrentInstruction = Instructions.begin();
+
 
 		// start at instruction[0];
 		complete = false;
 		int currentClockCycle = 0;
-		while(!complete){
+		for(vector<AInput>::iterator CurrentInstruction = Instructions.begin(); CurrentInstruction != Instructions.end(); CurrentInstruction++){
 			tryToExecute(*CurrentInstruction, CurrentInstruction);
-			complete = CurrentInstruction == Instructions.end();
-			CurrentInstruction++;
 		}
 	}
 
 };
 
-void load(Scoreboard &scoreboard, string arg1, string arg2) {
+void load(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
 
 };
-void store(Scoreboard &scoreboard, string arg1, string arg2) {
+void store(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
 
 };
-void fp_add(Scoreboard &scoreboard, string arg1, string arg2) {
+void fp_add(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
 
 };
-void fp_subtract(Scoreboard &scoreboard, string arg1, string arg2) {
+void fp_subtract(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
 
 };
-void fp_multiply(Scoreboard &scoreboard, string arg1, string arg2) {
+void fp_multiply(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
 
 };
-void fp_divide(Scoreboard &scoreboard, string arg1, string arg2) {
+void fp_divide(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
 
 };
 
@@ -215,12 +283,13 @@ int main(int argc, char* argv[]) {
 			pair<string, Subprocessor>((string) "FP DIVIDER", Subprocessor ((const clockCycle[]) {1, 1, 40, 1}, 2))
 		},
 		{
-			pair<string, pair<string, void (*) (Scoreboard&, string, string)>>("L.D", pair<string, void (*) (Scoreboard&, string, string)> ("INTEGER UNIT", &load)),
-			pair<string, pair<string, void (*) (Scoreboard&, string, string)>>("S.D", pair<string, void (*) (Scoreboard&, string, string)> ("INTEGER UNIT", &store)),
-			pair<string, pair<string, void (*) (Scoreboard&, string, string)>>("MUL.D", pair<string, void (*) (Scoreboard&, string, string)> ("FP MULTIPLIER", &fp_multiply)),
-			pair<string, pair<string, void (*) (Scoreboard&, string, string)>>("DIV.D", pair<string, void (*) (Scoreboard&, string, string)> ("FP DIVIDER", &fp_divide)),
-			pair<string, pair<string, void (*) (Scoreboard&, string, string)>>("ADD.D", pair<string, void (*) (Scoreboard&, string, string)> ("FP ADDER", &fp_add)),
-			pair<string, pair<string, void (*) (Scoreboard&, string, string)>>("SUB.D", pair<string, void (*) (Scoreboard&, string, string)> ("FP ADDER", &fp_subtract)),
+			pair<string, pair<string, CPUOperation>>("L.D", pair<string, CPUOperation> ("INTEGER UNIT", CPUOperation{&load})),
+			pair<string, pair<string, CPUOperation>>("S.D", pair<string, CPUOperation> ("INTEGER UNIT", CPUOperation{&store})),
+			pair<string, pair<string, CPUOperation>>("ADDI", pair<string, CPUOperation> ("INTEGER UNIT", CPUOperation{&fp_add})),
+			pair<string, pair<string, CPUOperation>>("MUL.D", pair<string, CPUOperation> ("FP MULTIPLIER", CPUOperation{&fp_multiply})),
+			pair<string, pair<string, CPUOperation>>("DIV.D", pair<string, CPUOperation> ("FP DIVIDER", CPUOperation{&fp_divide})),
+			pair<string, pair<string, CPUOperation>>("ADD.D", pair<string, CPUOperation> ("FP ADDER", CPUOperation{&fp_add})),
+			pair<string, pair<string, CPUOperation>>("SUB.D", pair<string, CPUOperation> ("FP ADDER", CPUOperation{&fp_subtract})),
 		}
 	);
 
@@ -247,5 +316,10 @@ int main(int argc, char* argv[]) {
 	}
 	// insert memory and instructions before executing
 	myInput.process();
+	printf("%-7s%-6s%-6s%-6s%-10s%-10s%-10s%-10s\n", "Name", "op1", "op2", "op3", "Issue", "Read Oper", "Execute", "Writeback");
+	for(size_t i = 0; i < myInput.Instructions.size(); i++){
+		auto Instruction = myInput.Instructions[i];
+		printf("%-7s%-6s%-6s%-6s%-10i%-10i%-10i%-10i\n", Instruction.InstructionName.c_str(), Instruction.reg1.c_str(), Instruction.reg2.c_str(), Instruction.reg3.c_str(), Instruction.clockCycleTimes[0], Instruction.clockCycleTimes[1], Instruction.clockCycleTimes[2], Instruction.clockCycleTimes[3]);
+	}
 	return 0;
 }
