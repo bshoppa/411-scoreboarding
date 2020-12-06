@@ -28,6 +28,7 @@ class Scoreboard;
 // accesses the data members of the input scoreboard
 struct CPUOperation {
 	void (*operation) (Scoreboard&, string, string, string) ;
+	bool doesWriteback = false;
 };
 
 // determines specifications of a part of the CPU - e.g. the INTEGER UNIT, a certain floating point unit such as the divider, etc.
@@ -65,6 +66,8 @@ public:
 	clockCycle clockCycleTimes[4] = {0};
 	bool hasExecuted = false;
 
+	bool doesWriteback = false;
+
 	Instruction() {
 		for(int i = 0; i < 4; i++){
 			clockCycleTimes[i] = 0;
@@ -83,6 +86,7 @@ public:
 		reg1 = in.reg1;
 		reg2 = in.reg2;
 		reg3 = in.reg3;
+		doesWriteback = in.doesWriteback;
 		for(int i = 0; i < 4; i++){
 			clockCycleTimes[i] = in.clockCycleTimes[i];
 		}
@@ -94,6 +98,7 @@ public:
 		reg1 = in.reg1;
 		reg2 = in.reg2;
 		reg3 = in.reg3;
+		doesWriteback = in.doesWriteback;
 		for(int i = 0; i < 4; i++){
 			clockCycleTimes[i] = in.clockCycleTimes[i];
 		}
@@ -107,14 +112,26 @@ public:
 
 
 	clockCycle IssueDependency(Instruction &in){
+		if(doesWriteback){
+			return clockCycleTimes[1];
+		}
 		if(in.reg1 == reg1){
-			return clockCycleTimes[3];
+			if(in.doesWriteback){
+				return clockCycleTimes[0] + 1;
+			}
+			return clockCycleTimes[3] + 1;
 		}
 		return clockCycleTimes[0] + 1; // don't allow anything to issue at the same time
 		// and ... force future instructions to execute in the future.
 	};
 
 	clockCycle ReadOperDependency(Instruction &in){
+		if(doesWriteback){
+			return clockCycleTimes[1];
+		}
+		if(reg1 == in.reg1){
+			return clockCycleTimes[3];
+		}
 		if(reg1 == in.reg2){
 			return clockCycleTimes[3];
 		}
@@ -250,7 +267,9 @@ public:
 			string reg3_and_buf; find_next(reg2_and_buf, temp.reg3);
 
 			//printf("Name \"%s\" reg1 \"%s\" reg2 \"%s\" reg3 \"%s\"\n", temp.InstructionName.c_str(), temp.reg1.c_str(), temp.reg2.c_str(), temp.reg3.c_str());
-
+			if(InstructionUseStatus.count(temp.InstructionName) != (size_t) NULL){
+				temp.doesWriteback = InstructionUseStatus.at(temp.InstructionName).operation.doesWriteback;
+			}
 			Instructions.push_back(temp);
 		}
 	};
@@ -264,6 +283,7 @@ public:
 		clockCycle whenCanWriteBack;
 		clockCycle whenCanStartReadOper;
 		// findIssue: // don't crucify me, i like goto's sometimes ...
+
 		bool hasEnoughUnits = false;
 		while(!hasEnoughUnits){
 			for(int index = distance(Instructions.begin(), iterator) - 1; index >= 0; index--){
@@ -289,7 +309,6 @@ public:
 					}
 				}
 				if(processor->units < unitsUsedAtTime){
-					cout << "Not enough units for instruction " << instruction.InstructionName << endl;
 					whenCanStartIssue++;
 					hasEnoughUnits = false;
 				} else {
@@ -366,6 +385,13 @@ public:
 
 };
 
+
+
+
+
+
+
+// helper functions for CPU operations
 size_t parse_register(string arg){
 	return stoi(arg.substr(1));
 }
@@ -375,7 +401,7 @@ size_t parse_address(string arg){
 	if(start_of_address != string::npos){
 		return stoi(arg.substr(start_of_address + 1, (end_of_address - start_of_address) - 1));
 	}
-	throw invalid_argument("unable to parse offset and address of load instruction");
+	throw invalid_argument("unable to parse offset and address of load instruction\nuse 'L.D F(register), offset(address)");
 	//return 0;
 }
 size_t parse_offset(string arg){
@@ -408,7 +434,7 @@ void captureAddresses(size_t &address_in_F_1, size_t &address_in_F_2, size_t &ad
 	}
 }
 
-
+// CPU operations
 void load(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
 	size_t address_in_F = parse_register(arg1);
 	size_t address_in_mem = parse_address(arg2);
@@ -529,6 +555,10 @@ void fp_divide(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
 	scoreboard.FRegisters[address_in_F_1].data.f = scoreboard.FRegisters[address_in_F_2].data.f / scoreboard.FRegisters[address_in_F_3].data.f;
 };
 
+
+
+
+
 int main(int argc, char* argv[]) {
 	Scoreboard myInput (
 		{
@@ -539,7 +569,7 @@ int main(int argc, char* argv[]) {
 		},
 		{
 			pair<string, pair<string, CPUOperation>>("L.D", pair<string, CPUOperation> ("INTEGER UNIT", CPUOperation{&load})),
-			pair<string, pair<string, CPUOperation>>("S.D", pair<string, CPUOperation> ("INTEGER UNIT", CPUOperation{&store})),
+			pair<string, pair<string, CPUOperation>>("S.D", pair<string, CPUOperation> ("INTEGER UNIT", CPUOperation{&store, true})),
 			pair<string, pair<string, CPUOperation>>("ADD", pair<string, CPUOperation> ("INTEGER UNIT", CPUOperation{&int_add})),
 			pair<string, pair<string, CPUOperation>>("ADDI", pair<string, CPUOperation> ("INTEGER UNIT", CPUOperation{&int_add_immediate_value})),
 			pair<string, pair<string, CPUOperation>>("MUL.D", pair<string, CPUOperation> ("FP MULTIPLIER", CPUOperation{&fp_multiply})),
