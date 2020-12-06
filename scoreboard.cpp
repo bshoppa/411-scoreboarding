@@ -81,35 +81,6 @@ public:
 	Instruction(const char* t_InstructionName, const char* t_reg1 = nullptr, const char* t_reg2 = nullptr, const char* t_reg3 = nullptr) : Instruction((string) t_InstructionName, (string) t_reg1, (string) t_reg2, (string) t_reg3) {
 
 	}
-	Instruction(const Instruction &in){
-		InstructionName = in.InstructionName;
-		reg1 = in.reg1;
-		reg2 = in.reg2;
-		reg3 = in.reg3;
-		doesWriteback = in.doesWriteback;
-		for(int i = 0; i < 4; i++){
-			clockCycleTimes[i] = in.clockCycleTimes[i];
-		}
-		hasExecuted = in.hasExecuted;
-	};
-
-	Instruction& operator=(const Instruction &in){
-		InstructionName = in.InstructionName;
-		reg1 = in.reg1;
-		reg2 = in.reg2;
-		reg3 = in.reg3;
-		doesWriteback = in.doesWriteback;
-		for(int i = 0; i < 4; i++){
-			clockCycleTimes[i] = in.clockCycleTimes[i];
-		}
-		hasExecuted = in.hasExecuted;
-		return *this;
-	};
-
-	~Instruction(){
-
-	};
-
 
 	clockCycle IssueDependency(Instruction &in){
 		if(doesWriteback){
