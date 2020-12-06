@@ -128,6 +128,16 @@ public:
 		return clockCycleTimes[3];
 	};
 
+	clockCycle WritebackReadAfterWrite(Instruction &in){
+		if(reg2 == in.reg1){
+			return clockCycleTimes[1];
+		}
+		if(reg3 == in.reg1){
+			return clockCycleTimes[1];
+		}
+		return 0;
+	}
+
 };
 
 int max(int a, int b){
@@ -331,7 +341,7 @@ public:
 				auto previousInstruction = Instructions[index];
 
 				if(previousInstruction.hasExecuted){
-					if(previousInstruction.WritebackDependency(instruction) == whenCanWriteBack){
+					if(previousInstruction.WritebackDependency(instruction) == whenCanWriteBack || previousInstruction.WritebackReadAfterWrite(instruction) >= whenCanWriteBack){
 						changed = true;
 						// since we cannot go into the past to writeback... we shall go into the future.
 						whenCanWriteBack++;
