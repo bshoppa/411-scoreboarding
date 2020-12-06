@@ -270,9 +270,6 @@ public:
 	};
 
 	void process() {
-
-
-		// start at instruction[0];
 		complete = false;
 		int currentClockCycle = 0;
 		for(vector<Instruction>::iterator CurrentInstruction = Instructions.begin(); CurrentInstruction != Instructions.end(); CurrentInstruction++){
@@ -299,6 +296,32 @@ size_t parse_offset(string arg){
 	return stoi(arg.substr(0, start_of_address));
 }
 
+void captureAddresses(size_t &address_in_F_1, size_t &address_in_F_2, size_t &address_in_F_3, const string arg1, const string arg2, const string arg3, const size_t address_max){
+	address_in_F_1 = parse_register(arg1);
+	address_in_F_2 = parse_register(arg2);
+	address_in_F_3 = parse_register(arg3);
+
+	if(address_in_F_1 >= address_max){
+		throw out_of_range("position out of bounds");
+	}
+	if(address_in_F_1 < 0){
+		throw out_of_range("position out of bounds");
+	}
+	if(address_in_F_2 >= address_max){
+		throw out_of_range("position out of bounds");
+	}
+	if(address_in_F_2 < 0){
+		throw out_of_range("position out of bounds");
+	}
+	if(address_in_F_3 >= address_max){
+		throw out_of_range("position out of bounds");
+	}
+	if(address_in_F_3 < 0){
+		throw out_of_range("position out of bounds");
+	}
+}
+
+
 void load(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
 	size_t address_in_F = parse_register(arg1);
 	size_t address_in_mem = parse_address(arg2);
@@ -319,6 +342,7 @@ void load(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
 
 	scoreboard.FRegisters[address_in_F] = Data((float) scoreboard.Memory[address_in_mem + offset_in_mem].data.i);
 };
+
 void store(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
 	size_t address_in_F = parse_register(arg1);
 	size_t address_in_mem = parse_address(arg2);
@@ -341,19 +365,81 @@ void store(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
 };
 
 void int_add(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
-	cout << "adding i" << endl;
+	size_t address_in_I_1;
+	size_t address_in_I_2;
+	size_t address_in_I_3;
+	try {
+		captureAddresses(address_in_I_1, address_in_I_2, address_in_I_3, arg1, arg2, arg3, scoreboard.FRegisters.size());
+	}
+	catch (const out_of_range&e) {
+		throw(out_of_range("position in integer registers out of bounds"));
+	}
+
+	scoreboard.IRegisters[address_in_I_1].data.i = scoreboard.IRegisters[address_in_I_2].data.i + scoreboard.IRegisters[address_in_I_3].data.i;
 };
+
+void int_add_immediate_value(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
+	size_t address_in_I_1 = parse_register(arg1);
+	size_t address_in_I_2 = parse_register(arg1);
+	int immediate_value = stoi(arg3);
+
+	scoreboard.IRegisters[address_in_I_1].data.i = scoreboard.IRegisters[address_in_I_2].data.i + immediate_value;
+};
+
 void fp_add(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
-	cout << "addbng" << endl;
+	size_t address_in_F_1;
+	size_t address_in_F_2;
+	size_t address_in_F_3;
+	try {
+		captureAddresses(address_in_F_1, address_in_F_2, address_in_F_3, arg1, arg2, arg3, scoreboard.FRegisters.size());
+	}
+	catch (const out_of_range&e) {
+		throw(out_of_range("position in fp registers out of bounds"));
+	}
+
+	scoreboard.FRegisters[address_in_F_1].data.f = scoreboard.FRegisters[address_in_F_2].data.f + scoreboard.FRegisters[address_in_F_3].data.f;
 };
+
 void fp_subtract(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
-	cout << "subfdctrng" << endl;
+	size_t address_in_F_1;
+	size_t address_in_F_2;
+	size_t address_in_F_3;
+	try {
+		captureAddresses(address_in_F_1, address_in_F_2, address_in_F_3, arg1, arg2, arg3, scoreboard.FRegisters.size());
+	}
+	catch (const out_of_range&e) {
+		throw(out_of_range("position in fp registers out of bounds"));
+	}
+
+	scoreboard.FRegisters[address_in_F_1].data.f = scoreboard.FRegisters[address_in_F_2].data.f - scoreboard.FRegisters[address_in_F_3].data.f;
 };
+
 void fp_multiply(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
-	cout << "mukltnfgping" << endl;
+	size_t address_in_F_1;
+	size_t address_in_F_2;
+	size_t address_in_F_3;
+	try {
+		captureAddresses(address_in_F_1, address_in_F_2, address_in_F_3, arg1, arg2, arg3, scoreboard.FRegisters.size());
+	}
+	catch (const out_of_range&e) {
+		throw(out_of_range("position in fp registers out of bounds"));
+	}
+
+	scoreboard.FRegisters[address_in_F_1].data.f = scoreboard.FRegisters[address_in_F_2].data.f * scoreboard.FRegisters[address_in_F_3].data.f;
 };
+
 void fp_divide(Scoreboard &scoreboard, string arg1, string arg2, string arg3) {
-	cout << "diviseun" << endl;
+	size_t address_in_F_1;
+	size_t address_in_F_2;
+	size_t address_in_F_3;
+	try {
+		captureAddresses(address_in_F_1, address_in_F_2, address_in_F_3, arg1, arg2, arg3, scoreboard.FRegisters.size());
+	}
+	catch (const out_of_range&e) {
+		throw(out_of_range("position in fp registers out of bounds"));
+	}
+
+	scoreboard.FRegisters[address_in_F_1].data.f = scoreboard.FRegisters[address_in_F_2].data.f / scoreboard.FRegisters[address_in_F_3].data.f;
 };
 
 int main(int argc, char* argv[]) {
@@ -367,7 +453,8 @@ int main(int argc, char* argv[]) {
 		{
 			pair<string, pair<string, CPUOperation>>("L.D", pair<string, CPUOperation> ("INTEGER UNIT", CPUOperation{&load})),
 			pair<string, pair<string, CPUOperation>>("S.D", pair<string, CPUOperation> ("INTEGER UNIT", CPUOperation{&store})),
-			pair<string, pair<string, CPUOperation>>("ADDI", pair<string, CPUOperation> ("INTEGER UNIT", CPUOperation{&int_add})),
+			pair<string, pair<string, CPUOperation>>("ADD", pair<string, CPUOperation> ("INTEGER UNIT", CPUOperation{&int_add})),
+			pair<string, pair<string, CPUOperation>>("ADDI", pair<string, CPUOperation> ("INTEGER UNIT", CPUOperation{&int_add_immediate_value})),
 			pair<string, pair<string, CPUOperation>>("MUL.D", pair<string, CPUOperation> ("FP MULTIPLIER", CPUOperation{&fp_multiply})),
 			pair<string, pair<string, CPUOperation>>("DIV.D", pair<string, CPUOperation> ("FP DIVIDER", CPUOperation{&fp_divide})),
 			pair<string, pair<string, CPUOperation>>("ADD.D", pair<string, CPUOperation> ("FP ADDER", CPUOperation{&fp_add})),
