@@ -56,6 +56,10 @@ public:
 // -> .InstructionName, .reg1, .reg2 ... .reg3 = ""
 // INSTRUCTION reg1, reg2, IMMEDIATE
 // -> .InstructionName, .reg1, .reg2, .reg3
+
+// (instead of checking if a symbol such as $ or F is in front of a register, it assumes that whatever's there is whatever is required to be there.)
+// you could write "ADDI F0, F0, 10" for example, and it would fail to put anything into any floating point register
+// and instead increment $0 (the integer register)
 struct Instruction {
 public:
 	string InstructionName = "";
@@ -66,6 +70,9 @@ public:
 	clockCycle clockCycleTimes[4] = {0};
 	bool hasExecuted = false;
 
+	// label for the person doing the scoreboarding to know whether this instruction has to writeback
+	// false means that it does have to write back
+	// true means that it doesn't.
 	bool doesWriteback = false;
 
 	Instruction() {
@@ -159,6 +166,7 @@ public:
 };
 
 // parse each line of input
+// (the main parsing is done in Scoreboard::load_instructions)
 void find_next(const string buf, string &out){
 	size_t next_comma = buf.find_first_of(',');
 
